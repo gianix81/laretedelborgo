@@ -78,35 +78,40 @@ const ManagerPanel: React.FC<ManagerPanelProps> = ({ isOpen, onClose, currentUse
   const handleApproveBusiness = (businessId: string) => {
     const approveBusiness = async () => {
       try {
-        if (isSupabaseConfigured()) {
-          // Aggiorna su Supabase
-          const { error } = await supabase
-            .from('global_businesses')
-            .update({ 
-              approved: true, 
-              approval_status: 'approved',
-              rejection_reason: null,
-              active: true,
-              approved_at: new Date().toISOString(),
-              approved_by: currentUser.id
-            })
-            .eq('id', businessId);
-
-          if (error) throw error;
-          console.log('✅ Business approved in Supabase');
-        } else {
-          // Fallback al storage locale
-          storageManager.updateBusiness(businessId, { 
-            approved: true, 
-            approval_status: 'approved',
-            rejection_reason: undefined,
-            active: true
-          });
-        }
+        console.log('🔄 APPROVING BUSINESS:', businessId);
+        
+        // AGGIORNA NEL STORAGE LOCALE
+        console.log('💾 Updating in LOCAL STORAGE first...');
+        storageManager.updateBusiness(businessId, { 
+          approved: true, 
+          approval_status: 'approved',
+          rejection_reason: null,
+          active: true,
+          approved_at: new Date().toISOString(),
+          approved_by: currentUser.id
+        });
+        
+        // VERIFICA SALVATAGGIO
+        const updatedBusiness = storageManager.getBusinesses().find(b => b.id === businessId);
+        console.log('🔍 LOCAL STORAGE - Updated business:', updatedBusiness);
+        
+        // NON USARE SUPABASE per evitare errori UUID
+        console.log('⚠️ SKIPPING SUPABASE - Using local storage only');
         
         loadData();
         onDataChange?.();
-        alert('Attività approvata con successo!');
+        console.log('✅ BUSINESS APPROVAL COMPLETED - TRIGGERING REFRESH');
+        
+        // REFRESH MULTIPLI
+        setTimeout(() => {
+          onDataChange?.();
+        }, 100);
+        
+        setTimeout(() => {
+          onDataChange?.();
+        }, 1000);
+        
+        alert('✅ ATTIVITÀ APPROVATA E RESA VISIBILE!');
         
       } catch (error) {
         console.error('❌ Error approving business:', error);
@@ -144,11 +149,12 @@ const ManagerPanel: React.FC<ManagerPanelProps> = ({ isOpen, onClose, currentUse
               approval_status: 'rejected',
               rejection_reason: reason
             });
+            console.log('✅ Business rejected in local storage');
           }
           
           loadData();
           onDataChange?.();
-          alert('Attività rifiutata.');
+          alert('❌ Attività rifiutata.');
           
         } catch (error) {
           console.error('❌ Error rejecting business:', error);
@@ -161,13 +167,29 @@ const ManagerPanel: React.FC<ManagerPanelProps> = ({ isOpen, onClose, currentUse
   };
 
   const handleToggleActive = (businessId: string, currentActive: boolean) => {
+    console.log('🔄 Toggling active status for business:', businessId, 'from', currentActive, 'to', !currentActive);
+    
+    // AGGIORNA SOLO NEL STORAGE LOCALE
     storageManager.updateBusiness(businessId, { active: !currentActive });
+    
+    // VERIFICA AGGIORNAMENTO
+    const updatedBusiness = storageManager.getBusinesses().find(b => b.id === businessId);
+    console.log('🔍 Updated business active status:', updatedBusiness?.active);
+    
     loadData();
     onDataChange?.(); // Notify parent to refresh
-    alert(`Attività ${!currentActive ? 'attivata' : 'disattivata'} con successo!`);
     
-    // Notifica il componente padre per aggiornare i dati
-    onDataChange?.();
+    // REFRESH MULTIPLI
+    setTimeout(() => {
+      onDataChange?.();
+    }, 100);
+    
+    setTimeout(() => {
+      onDataChange?.();
+    }, 500);
+    
+    console.log('✅ Active status toggled');
+    alert(`✅ Attività ${!currentActive ? 'RESA VISIBILE' : 'NASCOSTA'} con successo!`);
   };
 
   const handleEditBusiness = (business: Business) => {

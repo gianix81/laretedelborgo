@@ -52,8 +52,14 @@ function App() {
 
   // Force refresh function (now uses the hook's refetch)
   const forceRefresh = () => {
-    console.log('🔄 Force refresh triggered');
+    console.log('🔄 FORCE REFRESH TRIGGERED FROM APP');
     refetchBusinesses();
+    
+    // Doppio refresh per sicurezza
+    setTimeout(() => {
+      console.log('🔄 SECOND REFRESH AFTER 500ms');
+      refetchBusinesses();
+    }, 500);
   };
 
   // Handle business registration
@@ -62,7 +68,6 @@ function App() {
     
     try {
       const newBusiness: Business = {
-        id: `business-${Date.now()}`,
         name: data.businessName,
         category: data.category,
         description: data.description,
@@ -88,17 +93,23 @@ function App() {
         approval_status: user?.user_type === 'manager' ? 'approved' : 'pending'
       };
 
+      console.log('💾 Saving business to storage:', newBusiness);
+      
       // Add business to storage
       storageManager.addBusiness(newBusiness);
+      
+      console.log('🔄 Triggering data refresh...');
       
       // Force refresh to show new data  
       forceRefresh();
       
       // Show success message
       if (user?.user_type === 'manager') {
-        alert('✅ Attività registrata e approvata automaticamente!');
+        console.log('✅ Manager registration - auto-approved');
+        alert('✅ Attività registrata e approvata automaticamente! Ora è visibile nell\'app.');
       } else {
-        alert('✅ Attività registrata! In attesa di approvazione dal manager.');
+        console.log('✅ Business owner registration - pending approval');
+        alert('✅ Attività registrata! In attesa di approvazione dal manager. Riceverai una notifica quando sarà approvata.');
       }
       
     } catch (error) {
@@ -116,6 +127,9 @@ function App() {
     return business;
   });
 
+  console.log('🏠 HOMEPAGE - Total businesses received:', businesses.length);
+  console.log('🏠 HOMEPAGE - Businesses data:', businesses);
+
   // Filter and sort businesses
   const filteredBusinesses = businessesWithDistance
     .filter(business => {
@@ -123,6 +137,8 @@ function App() {
       const matchesSearch = !searchTerm || 
         business.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         business.description.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      console.log(`🔍 FILTER - Business: ${business.name}, Category: ${matchesCategory}, Search: ${matchesSearch}`);
       return matchesCategory && matchesSearch;
     })
     .sort((a, b) => {
@@ -131,6 +147,9 @@ function App() {
       }
       return 0;
     });
+
+  console.log('🏠 HOMEPAGE - Filtered businesses:', filteredBusinesses.length);
+  console.log('🏠 HOMEPAGE - Filtered data:', filteredBusinesses);
 
   const handleLocationRequest = () => {
     refetchLocation();
