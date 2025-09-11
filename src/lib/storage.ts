@@ -1,6 +1,5 @@
 // src/lib/storage.ts
-// Nota: da src/lib/ verso supabase nello stesso folder: usa il path relativo corretto
-import { supabase } from './supabase';
+import { supabase } from './supabase'; // verifica che questo path sia giusto
 
 // ---------------------------------------------------------
 // BUSINESSES
@@ -51,7 +50,7 @@ export async function deleteBusiness(businessId: string) {
 
   if (error) {
     console.error("Errore nella cancellazione dell'attività:", error);
-    // mantengo il tuo contratto: true = errore, false = ok
+    // true = errore, false = ok (mantengo la tua semantica)
     return true;
   }
   return false;
@@ -207,33 +206,8 @@ export async function deleteComment(commentId: string) {
 }
 
 // ---------------------------------------------------------
-// EXPORT DEFAULT: oggetto "storage" con tutte le API
+// UNICO oggetto + UNICO default export
 // ---------------------------------------------------------
-const storage = {
-  // businesses
-  getBusinesses,
-  addBusiness,
-  updateBusiness,
-  deleteBusiness,
-  // users
-  getUsers,
-  addUser,
-  updateUser,
-  // categories
-  getCategories,
-  addCategory,
-  updateCategory,
-  deleteCategory,
-  // comments
-  getComments,
-  addComment,
-  updateComment,
-  deleteComment,
-};
-
-export default storage;
-// --- AGGIUNGERE IN FONDO A src/lib/storage.ts ---
-
 const storage = {
   // businesses
   getBusinesses,
