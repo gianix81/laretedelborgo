@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { X, Plus, Trash2, Clock, MapPin, Phone, MessageCircle, Send, Calendar, Euro } from 'lucide-react';
+import { X, Plus, Trash2, Clock, Calendar, Euro } from 'lucide-react';
 import { BusinessRegistration, BusinessHours, Article, Category } from '../types';
 import ImageUploader from './ImageUploader';
-import storageManager from '../lib/storage';
+import storageManager from '../lib/storage'; // default export (fisso)
 
 interface BusinessRegistrationProps {
   isOpen: boolean;
@@ -35,8 +35,9 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
     privacy: false,
     authorization: false,
     content: false,
-    moderation: false
+    moderation: false,
   });
+
   const [formData, setFormData] = useState<BusinessRegistration>({
     businessName: '',
     ownerName: '',
@@ -58,7 +59,9 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
     articles: [],
   });
 
-  const [currentArticle, setCurrentArticle] = useState<Omit<Article, 'id' | 'businessId' | 'createdAt'>>({
+  const [currentArticle, setCurrentArticle] = useState<
+    Omit<Article, 'id' | 'businessId' | 'createdAt'>
+  >({
     title: '',
     description: '',
     price: 0,
@@ -73,7 +76,11 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleHoursChange = (day: keyof BusinessHours, field: keyof BusinessHours[keyof BusinessHours], value: any) => {
+  const handleHoursChange = (
+    day: keyof BusinessHours,
+    field: keyof BusinessHours[keyof BusinessHours],
+    value: any
+  ) => {
     setFormData(prev => ({
       ...prev,
       hours: {
@@ -126,42 +133,70 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
     }));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     // Validazione consensi
-    const missingConsents = [];
+    const missingConsents: string[] = [];
     if (!consents.terms) missingConsents.push('Termini di Servizio');
     if (!consents.privacy) missingConsents.push('Privacy Policy');
     if (!consents.authorization) missingConsents.push('Autorizzazione legale');
     if (!consents.content) missingConsents.push('Dichiarazione contenuti');
     if (!consents.moderation) missingConsents.push('Moderazione contenuti');
-    
+
     if (missingConsents.length > 0) {
       alert(`Devi accettare tutti i consensi obbligatori. Mancano: ${missingConsents.join(', ')}`);
       return;
     }
-    
-    // Validazione aggiuntiva per business owners (non per manager)
-    if (currentUser?.user_type === 'business_owner') {
-      const existingBusiness = storageManager.getBusinesses().find(b => b.owner_id === currentUser.id);
-      if (existingBusiness) {
-        alert('Hai già registrato un\'attività. I titolari possono gestire solo una attività per account.');
-        return;
-      }
+
+    // Validazione minima campi obbligatori
+    if (
+      !formData.businessName ||
+      !formData.ownerName ||
+      !formData.email ||
+      !formData.phone ||
+      !formData.address ||
+      !formData.city ||
+      !formData.postalCode ||
+      !formData.category
+    ) {
+      alert('Compila tutti i campi obbligatori contrassegnati con *');
+      return;
     }
-    
+
+    // Regola: un business_owner può registrare una sola attività
+    try {
+      if (currentUser?.user_type === 'business_owner' && currentUser?.id) {
+        const businesses = await storageManager.getBusinesses();
+        const existing = Array.isArray(businesses)
+          ? businesses.find((b: any) => b.owner_id === currentUser.id)
+          : undefined;
+
+        if (existing) {
+          alert(
+            "Hai già registrato un'attività. I titolari possono gestire solo una attività per account."
+          );
+          return;
+        }
+      }
+    } catch (e) {
+      console.error('Errore durante la verifica attività esistenti:', e);
+      alert('Errore durante la verifica delle attività esistenti. Riprova.');
+      return;
+    }
+
+    // Invio al parent
     onSubmit(formData);
     onClose();
   };
 
   const steps = [
-    { number: 1, title: 'Dati Anagrafici', description: 'Informazioni base dell\'attività' },
+    { number: 1, title: 'Dati Anagrafici', description: "Informazioni base dell'attività" },
     { number: 2, title: 'Dettagli Attività', description: 'Categoria e descrizione' },
     { number: 3, title: 'Orari e Servizi', description: 'Orari di apertura e servizi' },
     { number: 4, title: 'Articoli/Prodotti', description: 'Gestione catalogo prodotti' },
     { number: 5, title: 'Riepilogo', description: 'Conferma e invio' },
   ];
 
-  const dayNames = {
+  const dayNames: Record<keyof BusinessHours, string> = {
     monday: 'Lunedì',
     tuesday: 'Martedì',
     wednesday: 'Mercoledì',
@@ -185,45 +220,47 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
               <X className="w-5 h-5 text-gray-600" />
             </button>
           </div>
-          
+
           {/* Progress Steps */}
           <div className="hidden sm:flex items-center justify-between">
             {steps.map((step, index) => (
               <div key={step.number} className="flex items-center">
                 <div className={`flex items-center gap-3 ${index < steps.length - 1 ? 'flex-1' : ''}`}>
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold text-sm ${
-                    currentStep >= step.number 
-                      ? 'bg-orange-500 text-white' 
-                      : 'bg-gray-200 text-gray-600'
-                  }`}>
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold text-sm ${
+                      currentStep >= step.number ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-600'
+                    }`}
+                  >
                     {step.number}
                   </div>
                   <div>
-                    <div className={`font-medium text-sm ${
-                      currentStep >= step.number ? 'text-orange-600' : 'text-gray-600'
-                    }`}>
+                    <div
+                      className={`font-medium text-sm ${
+                        currentStep >= step.number ? 'text-orange-600' : 'text-gray-600'
+                      }`}
+                    >
                       {step.title}
                     </div>
                     <div className="text-xs text-gray-500">{step.description}</div>
                   </div>
                 </div>
                 {index < steps.length - 1 && (
-                  <div className={`w-16 h-0.5 mx-4 ${
-                    currentStep > step.number ? 'bg-orange-500' : 'bg-gray-200'
-                  }`} />
+                  <div className={`w-16 h-0.5 mx-4 ${currentStep > step.number ? 'bg-orange-500' : 'bg-gray-200'}`} />
                 )}
               </div>
             ))}
           </div>
-          
+
           {/* Mobile Progress */}
           <div className="sm:hidden">
             <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
-              <span>Passo {currentStep} di {steps.length}</span>
+              <span>
+                Passo {currentStep} di {steps.length}
+              </span>
               <span>{Math.round((currentStep / steps.length) * 100)}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
+              <div
                 className="bg-orange-500 h-2 rounded-full transition-all duration-300"
                 style={{ width: `${(currentStep / steps.length) * 100}%` }}
               />
@@ -237,135 +274,115 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
           {currentStep === 1 && (
             <div className="space-y-6">
               <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-4">Dati Anagrafici</h3>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
-                    Nome Attività *
-                  </label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Nome Attività *</label>
                   <input
                     type="text"
                     value={formData.businessName}
-                    onChange={(e) => handleInputChange('businessName', e.target.value)}
+                    onChange={e => handleInputChange('businessName', e.target.value)}
                     className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent text-sm sm:text-base"
                     placeholder="Es. Trattoria da Mario"
                   />
                 </div>
-                
+
                 <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
-                    Nome Titolare *
-                  </label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Nome Titolare *</label>
                   <input
                     type="text"
                     value={formData.ownerName}
-                    onChange={(e) => handleInputChange('ownerName', e.target.value)}
+                    onChange={e => handleInputChange('ownerName', e.target.value)}
                     className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent text-sm sm:text-base"
                     placeholder="Mario Rossi"
                   />
                 </div>
-                
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Partita IVA
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Partita IVA</label>
                   <input
                     type="text"
                     value={formData.vatNumber}
-                    onChange={(e) => handleInputChange('vatNumber', e.target.value)}
+                    onChange={e => handleInputChange('vatNumber', e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent"
                     placeholder="12345678901"
                   />
                 </div>
-                
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Email *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
                   <input
                     type="email"
                     value={formData.email}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    onChange={e => handleInputChange('email', e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent"
                     placeholder="mario@trattoria.it"
                   />
                 </div>
-                
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Telefono *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Telefono *</label>
                   <input
                     type="tel"
                     value={formData.phone}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
+                    onChange={e => handleInputChange('phone', e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent"
                     placeholder="+39 0123 456789"
                   />
                 </div>
-                
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    WhatsApp *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">WhatsApp *</label>
                   <input
                     type="tel"
                     value={formData.whatsapp}
-                    onChange={(e) => handleInputChange('whatsapp', e.target.value)}
+                    onChange={e => handleInputChange('whatsapp', e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent"
                     placeholder="+39 333 1234567"
                   />
                 </div>
-                
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Telegram (opzionale)
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Telegram (opzionale)</label>
                   <input
                     type="text"
                     value={formData.telegram}
-                    onChange={(e) => handleInputChange('telegram', e.target.value)}
+                    onChange={e => handleInputChange('telegram', e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent"
                     placeholder="@username_telegram"
                   />
                 </div>
               </div>
-              
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Indirizzo Completo *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Indirizzo Completo *</label>
                 <input
                   type="text"
                   value={formData.address}
-                  onChange={(e) => handleInputChange('address', e.target.value)}
+                  onChange={e => handleInputChange('address', e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent"
                   placeholder="Via Roma 15, 20121 Milano"
                 />
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Città *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Città *</label>
                   <input
                     type="text"
                     value={formData.city}
-                    onChange={(e) => handleInputChange('city', e.target.value)}
+                    onChange={e => handleInputChange('city', e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent"
                     placeholder="Milano"
                   />
                 </div>
-                
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    CAP *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">CAP *</label>
                   <input
                     type="text"
                     value={formData.postalCode}
-                    onChange={(e) => handleInputChange('postalCode', e.target.value)}
+                    onChange={e => handleInputChange('postalCode', e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent"
                     placeholder="20121"
                   />
@@ -378,33 +395,29 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
           {currentStep === 2 && (
             <div className="space-y-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Dettagli Attività</h3>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Categoria *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Categoria *</label>
                   <select
                     value={formData.category}
-                    onChange={(e) => handleInputChange('category', e.target.value)}
+                    onChange={e => handleInputChange('category', e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent"
                   >
                     <option value="">Seleziona categoria</option>
-                    {categories.map((category) => (
+                    {categories.map(category => (
                       <option key={category.id} value={category.id}>
                         {category.name}
                       </option>
                     ))}
                   </select>
                 </div>
-                
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Tipo Attività *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Tipo Attività *</label>
                   <select
                     value={formData.businessType}
-                    onChange={(e) => handleInputChange('businessType', e.target.value)}
+                    onChange={e => handleInputChange('businessType', e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent"
                   >
                     <option value="shop">Negozio/Commercio</option>
@@ -413,42 +426,36 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
                   </select>
                 </div>
               </div>
-              
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Descrizione Attività *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Descrizione Attività *</label>
                 <textarea
                   value={formData.description}
-                  onChange={(e) => handleInputChange('description', e.target.value)}
+                  onChange={e => handleInputChange('description', e.target.value)}
                   rows={4}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent"
                   placeholder="Descrivi la tua attività, i servizi offerti e cosa ti rende unico..."
                 />
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Logo Attività
-                  </label>
-                  <ImageUploader
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Logo Attività</label>
+                <ImageUploader
                     currentImage={formData.logo}
-                    onImageChange={(dataUrl) => handleInputChange('logo', dataUrl)}
+                    onImageChange={dataUrl => handleInputChange('logo', dataUrl)}
                     placeholder="Carica logo attività"
                     maxWidth={300}
                     maxHeight={300}
                     quality={0.9}
                   />
                 </div>
-                
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Immagine Copertina
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Immagine Copertina</label>
                   <ImageUploader
                     currentImage={formData.coverImage}
-                    onImageChange={(dataUrl) => handleInputChange('coverImage', dataUrl)}
+                    onImageChange={dataUrl => handleInputChange('coverImage', dataUrl)}
                     placeholder="Carica immagine copertina"
                     maxWidth={800}
                     maxHeight={400}
@@ -463,43 +470,47 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
           {currentStep === 3 && (
             <div className="space-y-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Orari e Servizi</h3>
-              
+
               <div className="bg-gray-50 rounded-lg p-4">
                 <h4 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
                   <Clock className="w-5 h-5" />
                   Orari di Apertura
                 </h4>
-                
+
                 <div className="space-y-3">
                   {Object.entries(dayNames).map(([day, dayName]) => (
                     <div key={day} className="flex items-center gap-4">
-                      <div className="w-20 text-sm font-medium text-gray-700">
-                        {dayName}
-                      </div>
-                      
+                      <div className="w-20 text-sm font-medium text-gray-700">{dayName}</div>
+
                       <label className="flex items-center gap-2">
                         <input
                           type="checkbox"
                           checked={formData.hours[day as keyof BusinessHours].closed}
-                          onChange={(e) => handleHoursChange(day as keyof BusinessHours, 'closed', e.target.checked)}
+                          onChange={e =>
+                            handleHoursChange(day as keyof BusinessHours, 'closed', e.target.checked)
+                          }
                           className="rounded border-gray-300 text-orange-500 focus:ring-orange-400"
                         />
                         <span className="text-sm text-gray-600">Chiuso</span>
                       </label>
-                      
+
                       {!formData.hours[day as keyof BusinessHours].closed && (
                         <div className="flex items-center gap-2">
                           <input
                             type="time"
                             value={formData.hours[day as keyof BusinessHours].open}
-                            onChange={(e) => handleHoursChange(day as keyof BusinessHours, 'open', e.target.value)}
+                            onChange={e =>
+                              handleHoursChange(day as keyof BusinessHours, 'open', e.target.value)
+                            }
                             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent text-sm"
                           />
                           <span className="text-gray-500">-</span>
                           <input
                             type="time"
                             value={formData.hours[day as keyof BusinessHours].close}
-                            onChange={(e) => handleHoursChange(day as keyof BusinessHours, 'close', e.target.value)}
+                            onChange={e =>
+                              handleHoursChange(day as keyof BusinessHours, 'close', e.target.value)
+                            }
                             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent text-sm"
                           />
                         </div>
@@ -508,14 +519,14 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
                   ))}
                 </div>
               </div>
-              
+
               {formData.businessType === 'professional' && (
                 <div className="bg-blue-50 rounded-lg p-4">
                   <label className="flex items-center gap-3">
                     <input
                       type="checkbox"
                       checked={formData.appointmentBooking}
-                      onChange={(e) => handleInputChange('appointmentBooking', e.target.checked)}
+                      onChange={e => handleInputChange('appointmentBooking', e.target.checked)}
                       className="rounded border-gray-300 text-orange-500 focus:ring-orange-400"
                     />
                     <div>
@@ -537,71 +548,68 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
           {currentStep === 4 && (
             <div className="space-y-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Articoli e Prodotti</h3>
-              
+
               {/* Add New Article */}
               <div className="bg-gray-50 rounded-lg p-6">
                 <h4 className="font-medium text-gray-900 mb-4">Aggiungi Nuovo Articolo</h4>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Nome Articolo
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Nome Articolo</label>
                     <input
                       type="text"
                       value={currentArticle.title}
-                      onChange={(e) => setCurrentArticle(prev => ({ ...prev, title: e.target.value }))}
+                      onChange={e => setCurrentArticle(prev => ({ ...prev, title: e.target.value }))}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent"
                       placeholder="Es. Pizza Margherita"
                     />
                   </div>
-                  
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Prezzo (€)
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Prezzo (€)</label>
                     <div className="relative">
-                      <Euro className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <Euro className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                       <input
                         type="number"
                         step="0.01"
                         min="0"
                         value={currentArticle.price}
-                        onChange={(e) => setCurrentArticle(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
+                        onChange={e =>
+                          setCurrentArticle(prev => ({
+                            ...prev,
+                            price: parseFloat(e.target.value) || 0,
+                          }))
+                        }
                         className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent"
                         placeholder="12.50"
                       />
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Descrizione
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Descrizione</label>
                   <textarea
                     value={currentArticle.description}
-                    onChange={(e) => setCurrentArticle(prev => ({ ...prev, description: e.target.value }))}
+                    onChange={e =>
+                      setCurrentArticle(prev => ({ ...prev, description: e.target.value }))
+                    }
                     rows={3}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent"
                     placeholder="Descrivi l'articolo, ingredienti, caratteristiche..."
                   />
                 </div>
-                
+
                 {/* Image Upload */}
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Immagini Articolo (max 4)
                   </label>
-                  
+
                   <div className="space-y-3">
                     {currentArticle.images.map((image, index) => (
                       <div key={index} className="relative group border border-gray-200 rounded-lg overflow-hidden">
-                        <img
-                          src={image}
-                          alt={`Immagine ${index + 1}`}
-                          className="w-full h-32 object-cover"
-                        />
+                        <img src={image} alt={`Immagine ${index + 1}`} className="w-full h-32 object-cover" />
                         <button
                           type="button"
                           onClick={() => removeImageFromArticle(index)}
@@ -611,11 +619,11 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
                         </button>
                       </div>
                     ))}
-                    
+
                     {currentArticle.images.length < 4 && (
                       <ImageUploader
                         currentImage={null}
-                        onImageChange={(dataUrl) => {
+                        onImageChange={dataUrl => {
                           if (dataUrl) addImageToArticle(dataUrl);
                         }}
                         placeholder={`Aggiungi immagine ${currentArticle.images.length + 1}/4`}
@@ -626,7 +634,7 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
                     )}
                   </div>
                 </div>
-                
+
                 <button
                   onClick={addArticle}
                   disabled={!currentArticle.title || !currentArticle.description || currentArticle.price <= 0}
@@ -636,11 +644,13 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
                   Aggiungi Articolo
                 </button>
               </div>
-              
+
               {/* Articles List */}
               {formData.articles.length > 0 && (
                 <div>
-                  <h4 className="font-medium text-gray-900 mb-4">Articoli Aggiunti ({formData.articles.length})</h4>
+                  <h4 className="font-medium text-gray-900 mb-4">
+                    Articoli Aggiunti ({formData.articles.length})
+                  </h4>
                   <div className="space-y-3">
                     {formData.articles.map((article, index) => (
                       <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
@@ -685,31 +695,52 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
           {currentStep === 5 && (
             <div className="space-y-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Riepilogo Registrazione</h3>
-              
+
               <div className="bg-gray-50 rounded-lg p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <h4 className="font-medium text-gray-900 mb-3">Dati Attività</h4>
                     <div className="space-y-2 text-sm">
-                      <p><span className="font-medium">Nome:</span> {formData.businessName}</p>
-                      <p><span className="font-medium">Titolare:</span> {formData.ownerName}</p>
-                      <p><span className="font-medium">Categoria:</span> {categories.find(c => c.id === formData.category)?.name}</p>
-                      <p><span className="font-medium">Tipo:</span> {
-                        formData.businessType === 'shop' ? 'Negozio/Commercio' :
-                        formData.businessType === 'professional' ? 'Professionista' : 'Agenzia di Servizi'
-                      }</p>
-                      <p><span className="font-medium">Indirizzo:</span> {formData.address}</p>
+                      <p>
+                        <span className="font-medium">Nome:</span> {formData.businessName}
+                      </p>
+                      <p>
+                        <span className="font-medium">Titolare:</span> {formData.ownerName}
+                      </p>
+                      <p>
+                        <span className="font-medium">Categoria:</span>{' '}
+                        {categories.find(c => c.id === formData.category)?.name}
+                      </p>
+                      <p>
+                        <span className="font-medium">Tipo:</span>{' '}
+                        {formData.businessType === 'shop'
+                          ? 'Negozio/Commercio'
+                          : formData.businessType === 'professional'
+                          ? 'Professionista'
+                          : 'Agenzia di Servizi'}
+                      </p>
+                      <p>
+                        <span className="font-medium">Indirizzo:</span> {formData.address}
+                      </p>
                     </div>
                   </div>
-                  
+
                   <div>
                     <h4 className="font-medium text-gray-900 mb-3">Contatti</h4>
                     <div className="space-y-2 text-sm">
-                      <p><span className="font-medium">Email:</span> {formData.email}</p>
-                      <p><span className="font-medium">Telefono:</span> {formData.phone}</p>
-                      <p><span className="font-medium">WhatsApp:</span> {formData.whatsapp}</p>
+                      <p>
+                        <span className="font-medium">Email:</span> {formData.email}
+                      </p>
+                      <p>
+                        <span className="font-medium">Telefono:</span> {formData.phone}
+                      </p>
+                      <p>
+                        <span className="font-medium">WhatsApp:</span> {formData.whatsapp}
+                      </p>
                       {formData.telegram && (
-                        <p><span className="font-medium">Telegram:</span> {formData.telegram}</p>
+                        <p>
+                          <span className="font-medium">Telegram:</span> {formData.telegram}
+                        </p>
                       )}
                       {formData.appointmentBooking && (
                         <p className="text-blue-600 font-medium">✓ Prenotazioni abilitate</p>
@@ -717,7 +748,7 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
                     </div>
                   </div>
                 </div>
-                
+
                 {formData.articles.length > 0 && (
                   <div className="mt-6 pt-6 border-t border-gray-200">
                     <h4 className="font-medium text-gray-900 mb-3">
@@ -745,24 +776,10 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
                   </div>
                 )}
               </div>
-              
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                <h4 className="font-medium text-orange-900 mb-2">Piano di Abbonamento</h4>
-                <p className="text-sm text-orange-700 mb-3">
-                  Primo mese gratuito, poi €2/mese per il piano base. Potrai sempre aggiornare al piano Professionista (€10/mese) per funzionalità avanzate.
-                </p>
-                <div className="flex items-center gap-2 text-sm text-orange-600">
-                  <span className="font-medium">✓ Profilo completo</span>
-                  <span className="font-medium">✓ Gestione articoli</span>
-                  <span className="font-medium">✓ Contatti diretti</span>
-                </div>
-              </div>
-              
+
               {/* Terms and Responsibilities */}
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <h4 className="font-medium text-red-900 mb-3">
-                  ⚠️ Responsabilità e Termini di Utilizzo
-                </h4>
+                <h4 className="font-medium text-red-900 mb-3">⚠️ Responsabilità e Termini di Utilizzo</h4>
                 <div className="text-sm text-red-800 space-y-2">
                   <p className="font-medium">Registrando la mia attività, mi impegno a:</p>
                   <ul className="list-disc list-inside space-y-1 ml-2">
@@ -780,16 +797,18 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
                     <li>Rispettare la dignità delle persone in tutte le comunicazioni</li>
                   </ul>
                   <p className="font-medium text-red-900 mt-3 p-2 bg-red-100 rounded border border-red-300">
-                    La violazione di queste regole comporterà la sospensione immediata dell'account, la rimozione di tutti i contenuti pubblicati e possibili azioni legali. L'azienda si riserva il diritto di segnalare alle autorità competenti eventuali contenuti illegali.
+                    La violazione di queste regole comporterà la sospensione immediata dell'account, la rimozione di
+                    tutti i contenuti pubblicati e possibili azioni legali. L'azienda si riserva il diritto di segnalare
+                    alle autorità competenti eventuali contenuti illegali.
                   </p>
                 </div>
-                
+
                 <div className="mt-4 space-y-3">
                   <label className="flex items-start gap-3">
                     <input
                       type="checkbox"
                       checked={consents.terms}
-                      onChange={(e) => setConsents(prev => ({ ...prev, terms: e.target.checked }))}
+                      onChange={e => setConsents(prev => ({ ...prev, terms: e.target.checked }))}
                       className="mt-1 rounded border-gray-300 text-orange-500 focus:ring-orange-400"
                     />
                     <span className="text-sm text-gray-700">
@@ -805,7 +824,7 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
                     <input
                       type="checkbox"
                       checked={consents.privacy}
-                      onChange={(e) => setConsents(prev => ({ ...prev, privacy: e.target.checked }))}
+                      onChange={e => setConsents(prev => ({ ...prev, privacy: e.target.checked }))}
                       className="mt-1 rounded border-gray-300 text-orange-500 focus:ring-orange-400"
                     />
                     <span className="text-sm text-gray-700">
@@ -821,11 +840,12 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
                     <input
                       type="checkbox"
                       checked={consents.authorization}
-                      onChange={(e) => setConsents(prev => ({ ...prev, authorization: e.target.checked }))}
+                      onChange={e => setConsents(prev => ({ ...prev, authorization: e.target.checked }))}
                       className="mt-1 rounded border-gray-300 text-orange-500 focus:ring-orange-400"
                     />
                     <span className="text-sm text-gray-700">
-                      Confermo di essere autorizzato a rappresentare legalmente l'attività e di avere tutti i diritti necessari per la pubblicazione dei contenuti *
+                      Confermo di essere autorizzato a rappresentare legalmente l'attività e di avere tutti i diritti
+                      necessari per la pubblicazione dei contenuti *
                     </span>
                   </label>
 
@@ -833,11 +853,13 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
                     <input
                       type="checkbox"
                       checked={consents.content}
-                      onChange={(e) => setConsents(prev => ({ ...prev, content: e.target.checked }))}
+                      onChange={e => setConsents(prev => ({ ...prev, content: e.target.checked }))}
                       className="mt-1 rounded border-gray-300 text-orange-500 focus:ring-orange-400"
                     />
                     <span className="text-sm text-gray-700">
-                      Dichiaro di non pubblicare contenuti che violino le leggi vigenti, inclusi ma non limitati a: contenuti razzisti, discriminatori, sessualmente espliciti, che promuovano violenza, armi, droghe o altre sostanze illegali *
+                      Dichiaro di non pubblicare contenuti che violino le leggi vigenti, inclusi ma non limitati a:
+                      contenuti razzisti, discriminatori, sessualmente espliciti, che promuovano violenza, armi, droghe
+                      o altre sostanze illegali *
                     </span>
                   </label>
 
@@ -845,11 +867,12 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
                     <input
                       type="checkbox"
                       checked={consents.moderation}
-                      onChange={(e) => setConsents(prev => ({ ...prev, moderation: e.target.checked }))}
+                      onChange={e => setConsents(prev => ({ ...prev, moderation: e.target.checked }))}
                       className="mt-1 rounded border-gray-300 text-orange-500 focus:ring-orange-400"
                     />
                     <span className="text-sm text-gray-700">
-                      Comprendo che tutti i contenuti pubblicati saranno soggetti a moderazione e che la piattaforma si riserva il diritto di rimuovere immediatamente qualsiasi contenuto ritenuto inappropriato *
+                      Comprendo che tutti i contenuti pubblicati saranno soggetti a moderazione e che la piattaforma si
+                      riserva il diritto di rimuovere immediatamente qualsiasi contenuto ritenuto inappropriato *
                     </span>
                   </label>
                 </div>
@@ -868,11 +891,11 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
             >
               Indietro
             </button>
-            
+
             <div className="text-sm text-gray-500">
               Passo {currentStep} di {steps.length}
             </div>
-            
+
             {currentStep < steps.length ? (
               <button
                 onClick={() => setCurrentStep(prev => prev + 1)}
@@ -885,7 +908,6 @@ const BusinessRegistrationModal: React.FC<BusinessRegistrationProps> = ({
                 onClick={handleSubmit}
                 className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
               >
-                <Send className="w-4 h-4" />
                 Registra Attività
               </button>
             )}
