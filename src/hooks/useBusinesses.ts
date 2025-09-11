@@ -1,117 +1,51 @@
-import { useState, useEffect } from 'react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { Business } from '../types';
-import { storageManager } from '../lib/storage';
+// src/hooks/useBusinesses.ts
+import { useEffect, useState, useCallback } from 'react';
+// Se hai un tipo Business definito, usa quello:
+// import type { Business } from '../types';
+import storageManager from '../lib/storage'; // default export: va bene rinominarlo "storageManager"
 
-export const useBusinesses = () => {
-  const [businesses, setBusinesses] = useState<Business[]>([]);
-  const [loading, setLoading] = useState(true);
+type Business = any; // rimpiazza con il tuo tipo reale se esiste
+
+export function useBusinesses() {
+  const [data, setData] = useState<Business[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Funzione per caricare le attività
-  const loadBusinesses = async () => {
-    console.log('🚀 LOADING BUSINESSES - START');
+  const fetchBusinesses = useCallback(async () => {
     setLoading(true);
     setError(null);
-    
     try {
-      // PRIMA: Prova sempre dal storage locale
-      console.log('💾 Loading from LOCAL STORAGE first...');
-      storageManager.initialize();
-      const localBusinesses = storageManager.getBusinesses();
-      console.log('📊 LOCAL STORAGE - Total businesses:', localBusinesses.length);
-      console.log('📋 LOCAL STORAGE - Raw data:', localBusinesses);
-      
-      // FILTRO MANAGER: Solo attività approvate E attive sono visibili
-      const visibleBusinesses = localBusinesses.filter(business => {
-        const isApproved = business.approved === true || business.approval_status === 'approved';
-        const isActive = business.active === true;
-        console.log(`🔍 Business ${business.name}: approved=${isApproved}, active=${isActive}`);
-        return isApproved && isActive;
-      });
-      
-      console.log('✅ VISIBLE BUSINESSES AFTER MANAGER FILTER:', visibleBusinesses.length);
-      setBusinesses(visibleBusinesses);
-      setLoading(false);
-      return;
-
-      // SECONDO: Se storage locale è vuoto, prova Supabase
-      if (isSupabaseConfigured()) {
-        console.log('📡 LOCAL STORAGE EMPTY - Trying Supabase...');
-        
-        const { data, error: supabaseError } = await supabase
-          .from('global_businesses')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (supabaseError) {
-          console.error('❌ Supabase error:', supabaseError);
-          throw supabaseError;
-        }
-
-        console.log('📊 SUPABASE - Raw data:', data);
-        console.log('✅ SHOWING ALL SUPABASE BUSINESSES:', data?.length || 0);
-        setBusinesses(data || []);
-      } else {
-        console.log('⚠️ NO SUPABASE CONFIG - Using empty array');
-        setBusinesses([]);
-      }
-      
-    } catch (err) {
-      console.error('❌ Error loading businesses:', err);
-      setError('Errore nel caricamento delle attività');
-      
-      // Fallback finale
-      try {
-        const fallbackBusinesses = storageManager.getBusinesses();
-        console.log('🔄 FALLBACK - Showing:', fallbackBusinesses.length, 'businesses');
-        setBusinesses(fallbackBusinesses);
-      } catch (fallbackError) {
-        console.error('❌ Fallback failed:', fallbackError);
-        setBusinesses([]);
-      }
+      const list = await storageManager.getBusinesses();
+      setData(Array.isArray(list) ? list : []);
+    } catch (e: any) {
+      console.error('useBusinesses: errore nel caricamento', e);
+      setError(e?.message ?? 'Errore durante il caricamento delle attività');
     } finally {
       setLoading(false);
-      console.log('🏁 LOADING BUSINESSES - END');
-    }
-  };
-
-  useEffect(() => {
-    loadBusinesses();
-
-    // Realtime subscription solo se Supabase è configurato
-    if (isSupabaseConfigured()) {
-      console.log('🔴 Setting up realtime subscription');
-      
-      const subscription = supabase
-        .channel('businesses_changes')
-        .on(
-          'postgres_changes',
-          { 
-            event: '*', 
-            schema: 'public', 
-            table: 'global_businesses' 
-          },
-          (payload) => {
-            console.log('🔴 Realtime change detected:', payload.eventType, payload);
-            loadBusinesses();
-          }
-        )
-        .subscribe((status) => {
-          console.log('🔴 Subscription status:', status);
-        });
-
-      return () => {
-        console.log('🔴 Cleaning up realtime subscription');
-        subscription.unsubscribe();
-      };
     }
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const list = await storageManager.getBusinesses();
+        if (alive) setData(Array.isArray(list) ? list : []);
+      } catch (e: any) {
+        if (alive) setError(e?.message ?? 'Errore durante il caricamento delle attività');
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   return {
-    businesses,
+    businesses: data,
     loading,
     error,
-    refetch: loadBusinesses
+    refresh: fetchBusinesses,
   };
-};
+}
