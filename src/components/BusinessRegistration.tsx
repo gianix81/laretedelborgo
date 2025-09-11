@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { X, Plus, Trash2, Clock, MapPin, Phone, MessageCircle, Send, Calendar, Euro } from 'lucide-react';
 import { BusinessRegistration, BusinessHours, Article, Category } from '../types';
 import ImageUploader from './ImageUploader';
-import { storageManager } from '../lib/storage';
+import storageManager from '../lib/storage';
 
 interface BusinessRegistrationProps {
   isOpen: boolean;

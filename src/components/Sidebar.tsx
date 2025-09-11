@@ -52,7 +52,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowSettings,
   onShowContacts,
   onChangeView,
-  currentView = 'grid'
+  currentView = 'grid',
 }) => {
   const [activeSection, setActiveSection] = useState<string | null>(null);
 

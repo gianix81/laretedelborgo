@@ -598,6 +598,9 @@ class LocalStorageManager {
 
 export const storageManager = LocalStorageManager.getInstance();
 
+// Default export for better module resolution
+export default storageManager;
+
 // Hook React per utilizzare il storage con aggiornamenti in tempo reale
 import { useState, useEffect } from 'react';
 

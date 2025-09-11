@@ -27,15 +27,18 @@ import {
 } from 'lucide-react';
 import { User, Business } from '../types';
 import { storageManager } from '../lib/storage';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import ImageUploader from './ImageUploader';
 
 interface ManagerPanelProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: User;
+  onDataChange?: () => void;
+  onDataChange?: () => void;
 }
 
-const ManagerPanel: React.FC<ManagerPanelProps> = ({ isOpen, onClose, currentUser }) => {
+const ManagerPanel: React.FC<ManagerPanelProps> = ({ isOpen, onClose, currentUser, onDataChange }) => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'businesses' | 'users' | 'settings'>('dashboard');
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -73,33 +76,98 @@ const ManagerPanel: React.FC<ManagerPanelProps> = ({ isOpen, onClose, currentUse
   if (!isOpen || currentUser.user_type !== 'manager') return null;
 
   const handleApproveBusiness = (businessId: string) => {
-    storageManager.updateBusiness(businessId, { 
-      approved: true, 
-      approval_status: 'approved',
-      rejection_reason: undefined
-    });
-    loadData();
-    alert('Attività approvata con successo!');
+    const approveBusiness = async () => {
+      try {
+        if (isSupabaseConfigured()) {
+          // Aggiorna su Supabase
+          const { error } = await supabase
+            .from('global_businesses')
+            .update({ 
+              approved: true, 
+              approval_status: 'approved',
+              rejection_reason: null,
+              active: true,
+              approved_at: new Date().toISOString(),
+              approved_by: currentUser.id
+            })
+            .eq('id', businessId);
+
+          if (error) throw error;
+          console.log('✅ Business approved in Supabase');
+        } else {
+          // Fallback al storage locale
+          storageManager.updateBusiness(businessId, { 
+            approved: true, 
+            approval_status: 'approved',
+            rejection_reason: undefined,
+            active: true
+          });
+        }
+        
+        loadData();
+        onDataChange?.();
+        alert('Attività approvata con successo!');
+        
+      } catch (error) {
+        console.error('❌ Error approving business:', error);
+        alert('Errore durante l\'approvazione');
+      }
+    };
+    
+    approveBusiness();
   };
 
   const handleRejectBusiness = (businessId: string) => {
     const reason = prompt('Motivo del rifiuto:');
     if (reason) {
-      storageManager.updateBusiness(businessId, { 
-        approved: false, 
-        active: false,
-        approval_status: 'rejected',
-        rejection_reason: reason
-      });
-      loadData();
-      alert('Attività rifiutata.');
+      const rejectBusiness = async () => {
+        try {
+          if (isSupabaseConfigured()) {
+            // Aggiorna su Supabase
+            const { error } = await supabase
+              .from('global_businesses')
+              .update({ 
+                approved: false, 
+                active: false,
+                approval_status: 'rejected',
+                rejection_reason: reason
+              })
+              .eq('id', businessId);
+
+            if (error) throw error;
+            console.log('✅ Business rejected in Supabase');
+          } else {
+            // Fallback al storage locale
+            storageManager.updateBusiness(businessId, { 
+              approved: false, 
+              active: false,
+              approval_status: 'rejected',
+              rejection_reason: reason
+            });
+          }
+          
+          loadData();
+          onDataChange?.();
+          alert('Attività rifiutata.');
+          
+        } catch (error) {
+          console.error('❌ Error rejecting business:', error);
+          alert('Errore durante il rifiuto');
+        }
+      };
+      
+      rejectBusiness();
     }
   };
 
   const handleToggleActive = (businessId: string, currentActive: boolean) => {
     storageManager.updateBusiness(businessId, { active: !currentActive });
     loadData();
+    onDataChange?.(); // Notify parent to refresh
     alert(`Attività ${!currentActive ? 'attivata' : 'disattivata'} con successo!`);
+    
+    // Notifica il componente padre per aggiornare i dati
+    onDataChange?.();
   };
 
   const handleEditBusiness = (business: Business) => {
@@ -132,13 +200,21 @@ const ManagerPanel: React.FC<ManagerPanelProps> = ({ isOpen, onClose, currentUse
     loadData();
     setShowEditModal(false);
     setEditingBusiness(null);
+    onDataChange?.(); // Notify parent to refresh
     alert('Attività aggiornata con successo!');
+    
+    // Notifica il componente padre per aggiornare i dati
+    onDataChange?.();
   };
   const handleDeleteBusiness = (businessId: string) => {
     if (confirm('Sei sicuro di voler eliminare questa attività? Questa azione non può essere annullata.')) {
       storageManager.deleteBusiness(businessId);
       loadData();
+      onDataChange?.(); // Notify parent to refresh
       alert('Attività eliminata con successo.');
+      
+      // Notifica il componente padre per aggiornare i dati
+      onDataChange?.();
     }
   };
 
@@ -169,7 +245,6 @@ const ManagerPanel: React.FC<ManagerPanelProps> = ({ isOpen, onClose, currentUse
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: <BarChart3 className="w-4 h-4" /> },
     { id: 'businesses', label: 'Attività', icon: <Building2 className="w-4 h-4" /> },
-    { id: 'requests', label: 'Richieste', icon: <Clock className="w-4 h-4" /> },
     { id: 'users', label: 'Utenti', icon: <Users className="w-4 h-4" /> },
     { id: 'settings', label: 'Impostazioni', icon: <Settings className="w-4 h-4" /> }
   ];
@@ -217,11 +292,6 @@ const ManagerPanel: React.FC<ManagerPanelProps> = ({ isOpen, onClose, currentUse
                   {tab.id === 'businesses' && stats.pending_businesses > 0 && (
                     <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
                       {stats.pending_businesses}
-                    </span>
-                  )}
-                  {tab.id === 'requests' && pendingRequests.length > 0 && (
-                    <span className="bg-orange-500 text-white text-xs px-2 py-1 rounded-full">
-                      {pendingRequests.length}
                     </span>
                   )}
                 </button>
@@ -358,6 +428,64 @@ const ManagerPanel: React.FC<ManagerPanelProps> = ({ isOpen, onClose, currentUse
                   </div>
                 </div>
 
+                {/* Pending Businesses Section */}
+                {businesses.filter(b => b.approval_status === 'pending').length > 0 && (
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-6">
+                    <h4 className="text-lg font-semibold text-orange-900 mb-4 flex items-center gap-2">
+                      <Clock className="w-5 h-5" />
+                      Attività in Attesa di Approvazione ({businesses.filter(b => b.approval_status === 'pending').length})
+                    </h4>
+                    
+                    <div className="space-y-4">
+                      {businesses.filter(b => b.approval_status === 'pending').map((business) => {
+                        const owner = users.find(u => u.id === business.owner_id);
+                        return (
+                          <div key={business.id} className="bg-white border border-orange-200 rounded-lg p-4">
+                            <div className="flex items-start gap-4">
+                              <img 
+                                src={business.image} 
+                                alt={business.name}
+                                className="w-16 h-16 rounded-lg object-cover"
+                              />
+                              <div className="flex-1">
+                                <h5 className="font-semibold text-gray-900 mb-1">{business.name}</h5>
+                                <p className="text-sm text-gray-600 mb-2">{business.description}</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-500">
+                                  <span>👤 {owner?.name || owner?.email}</span>
+                                  <span>📧 {owner?.email}</span>
+                                  <span>📍 {business.address}</span>
+                                  <span>📞 {business.phone}</span>
+                                  <span>📱 {business.whatsapp}</span>
+                                  <span>🏷️ {business.category}</span>
+                                </div>
+                                <div className="mt-2 text-xs text-gray-400">
+                                  Richiesta inviata: {new Date(business.created_at || '').toLocaleString('it-IT')}
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleApproveBusiness(business.id)}
+                                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                                >
+                                  <CheckCircle className="w-4 h-4" />
+                                  Approva
+                                </button>
+                                <button
+                                  onClick={() => handleRejectBusiness(business.id)}
+                                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                  Rifiuta
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -483,203 +611,6 @@ const ManagerPanel: React.FC<ManagerPanelProps> = ({ isOpen, onClose, currentUse
               <div className="space-y-6">
                 <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Richieste di Modifica</h3>
                 
-                {pendingRequests.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Clock className="w-10 h-10 text-gray-400" />
-                    </div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Nessuna richiesta in attesa</h3>
-                    <p className="text-gray-600">Tutte le richieste di modifica sono state elaborate</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {pendingRequests.map((request) => {
-                      const business = businesses.find(b => b.id === request.businessId);
-                      const user = users.find(u => u.id === request.userId);
-                      
-                      return (
-                        <div key={request.id || `${request.businessId}-${request.requestedAt}`} className="bg-white border border-gray-200 rounded-lg p-6">
-                          <div className="flex items-start justify-between mb-4">
-                            <div>
-                              <h4 className="font-semibold text-gray-900 mb-1">
-                                Modifica Attività: {business?.name || 'Attività non trovata'}
-                              </h4>
-                              <p className="text-sm text-gray-600">
-                                Richiesta da: {user?.name || user?.email || 'Utente sconosciuto'}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                {new Date(request.requestedAt).toLocaleString('it-IT')}
-                              </p>
-                            </div>
-                            <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-sm font-medium">
-                              In Attesa
-                            </span>
-                          </div>
-                          
-                          <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                            <h5 className="font-medium text-gray-900 mb-3">Modifiche Richieste:</h5>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                              {request.changes.name !== business?.name && (
-                                <div>
-                                  <span className="font-medium text-gray-700">Nome:</span>
-                                  <div className="text-red-600">- {business?.name}</div>
-                                  <div className="text-green-600">+ {request.changes.name}</div>
-                                </div>
-                              )}
-                              {request.changes.description !== business?.description && (
-                                <div>
-                                  <span className="font-medium text-gray-700">Descrizione:</span>
-                                  <div className="text-red-600 truncate">- {business?.description}</div>
-                                  <div className="text-green-600 truncate">+ {request.changes.description}</div>
-                                </div>
-                              )}
-                              {request.changes.phone !== business?.phone && (
-                                <div>
-                                  <span className="font-medium text-gray-700">Telefono:</span>
-                                  <div className="text-red-600">- {business?.phone}</div>
-                                  <div className="text-green-600">+ {request.changes.phone}</div>
-                                </div>
-                              )}
-                              {request.changes.address !== business?.address && (
-                                <div>
-                                  <span className="font-medium text-gray-700">Indirizzo:</span>
-                                  <div className="text-red-600 truncate">- {business?.address}</div>
-                                  <div className="text-green-600 truncate">+ {request.changes.address}</div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center justify-end gap-3">
-                            <button
-                              onClick={() => handleRejectPendingRequest(request.id || `${request.businessId}-${request.requestedAt}`)}
-                              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-                            >
-                              <XCircle className="w-4 h-4" />
-                              Rifiuta
-                            </button>
-                            <button
-                              onClick={() => handleApprovePendingRequest(request.id || `${request.businessId}-${request.requestedAt}`)}
-                              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                              Approva
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Requests Tab */}
-            {activeTab === 'requests' && (
-              <div className="space-y-6">
-                <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Richieste di Modifica</h3>
-                
-                {pendingRequests.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Clock className="w-10 h-10 text-gray-400" />
-                    </div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Nessuna richiesta in attesa</h3>
-                    <p className="text-gray-600">Tutte le richieste di modifica sono state elaborate</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {pendingRequests.map((request) => (
-                      <div key={request.id} className="bg-white border border-gray-200 rounded-lg p-6">
-                        <div className="flex items-start justify-between mb-4">
-                          <div>
-                            <h4 className="font-semibold text-gray-900">{request.businessName}</h4>
-                            <p className="text-sm text-gray-600">Richiesta di: {request.ownerName}</p>
-                            <p className="text-xs text-gray-500">
-                              {new Date(request.createdAt).toLocaleDateString('it-IT')}
-                            </p>
-                          </div>
-                          <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-sm font-medium">
-                            In Attesa
-                          </span>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                          {Object.entries(request.changes).map(([field, change]: [string, any]) => (
-                            <div key={field} className="bg-gray-50 rounded-lg p-3">
-                              <h5 className="font-medium text-gray-900 mb-2 capitalize">
-                                {field.replace(/([A-Z])/g, ' $1').trim()}
-                              </h5>
-                              <div className="space-y-2">
-                                <div>
-                                  <span className="text-xs text-red-600 font-medium">Vecchio:</span>
-                                  <p className="text-sm text-gray-700 bg-red-50 p-2 rounded">
-                                    {change.old || 'Non specificato'}
-                                  </p>
-                                </div>
-                                <div>
-                                  <span className="text-xs text-green-600 font-medium">Nuovo:</span>
-                                  <p className="text-sm text-gray-700 bg-green-50 p-2 rounded">
-                                    {change.new || 'Non specificato'}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        
-                        <div className="flex items-center justify-end gap-3">
-                          <button
-                            onClick={() => {
-                              const reason = prompt('Motivo del rifiuto:');
-                              if (reason) {
-                                // Handle reject
-                                const updatedRequests = pendingRequests.filter(r => r.id !== request.id);
-                                setPendingRequests(updatedRequests);
-                                localStorage.setItem('borgo_pending_requests', JSON.stringify([
-                                  ...JSON.parse(localStorage.getItem('borgo_pending_requests') || '[]').filter((r: any) => r.id !== request.id),
-                                  { ...request, status: 'rejected', rejectionReason: reason }
-                                ]));
-                                alert('Richiesta rifiutata');
-                              }
-                            }}
-                            className="px-4 py-2 border border-red-300 text-red-700 rounded-lg font-medium hover:bg-red-50 transition-colors"
-                          >
-                            Rifiuta
-                          </button>
-                          <button
-                            onClick={() => {
-                              // Apply changes to business
-                              storageManager.updateBusiness(request.businessId, request.changes);
-                              
-                              // Remove from pending
-                              const updatedRequests = pendingRequests.filter(r => r.id !== request.id);
-                              setPendingRequests(updatedRequests);
-                              localStorage.setItem('borgo_pending_requests', JSON.stringify([
-                                ...JSON.parse(localStorage.getItem('borgo_pending_requests') || '[]').filter((r: any) => r.id !== request.id),
-                                { ...request, status: 'approved' }
-                              ]));
-                              
-                              loadData();
-                              alert('Richiesta approvata e modifiche applicate!');
-                            }}
-                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
-                          >
-                            Approva
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Users Management */}
-            {activeTab === 'users' && (
-              <div className="space-y-6">
-                <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Gestione Utenti</h3>
-                
                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -745,7 +676,7 @@ const ManagerPanel: React.FC<ManagerPanelProps> = ({ isOpen, onClose, currentUse
               </div>
             )}
 
-            {/* Settings */}
+            {/* Users Management */}
             {activeTab === 'settings' && (
               <div className="space-y-6">
                 <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Impostazioni Sistema</h3>

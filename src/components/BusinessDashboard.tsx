@@ -32,6 +32,7 @@ interface BusinessDashboardProps {
   business?: Business | null;
   onUpdateBusiness?: (updates: Partial<Business>) => void;
   currentUser?: any;
+  onDataChange?: () => void;
 }
 
 const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
@@ -39,7 +40,8 @@ const BusinessDashboard: React.FC<BusinessDashboardProps> = ({
   onClose,
   business,
   onUpdateBusiness,
-  currentUser
+  currentUser,
+  onDataChange
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'analytics' | 'settings'>('overview');
   const [showProductForm, setShowProductForm] = useState(false);
