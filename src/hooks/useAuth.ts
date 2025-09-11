@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
-import { User, AuthState } from '../types';
-import { storageManager } from '../lib/storage';
+import { supabase } from '../lib/supabase'; // Assicurati che il percorso sia giusto
+import { User } from '@supabase/supabase-js';
+
+// Puoi estendere questo tipo se hai un profilo utente più dettagliato
+export interface AuthState {
+  user: User | null;
+  loading: boolean;
+  error: string | null;
+}
 
 export const useAuth = () => {
   const [state, setState] = useState<AuthState>({
@@ -10,162 +17,98 @@ export const useAuth = () => {
   });
 
   useEffect(() => {
-    // Inizializza il sistema di storage
-    storageManager.initialize();
-    
-    // Check if user is logged in from localStorage
-    const savedUser = localStorage.getItem('borgo_user');
-    if (savedUser) {
-      try {
-        const user = JSON.parse(savedUser);
-        setState({
-          user,
-          loading: false,
-          error: null
-        });
-      } catch (error) {
-        localStorage.removeItem('borgo_user');
-        setState({
-          user: null,
-          loading: false,
-          error: null
-        });
-      }
-    } else {
+    // onAuthStateChange è il modo corretto per gestire le sessioni in tempo reale.
+    // Si attiva al caricamento, al login, al logout, etc.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setState({
-        user: null,
+        user: session?.user ?? null,
         loading: false,
         error: null
       });
-    }
+    });
+
+    // Pulisci il listener quando il componente viene smontato
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {
     setState(prev => ({ ...prev, loading: true, error: null }));
+    
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-    // Check for Manager credentials
-    if (email === 'manager' && password === 'manager2025@') {
-      const managerUser: User = {
-        id: 'manager-001',
-        email: 'manager@app.internal',
-        name: 'App Manager',
-        created_at: new Date().toISOString(),
-        user_type: 'manager'
-      };
-      
-      localStorage.setItem('borgo_user', JSON.stringify(managerUser));
-      setState({
-        user: managerUser,
-        loading: false,
-        error: null
-      });
-      
-      return { success: true };
-    }
-
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // Get users from localStorage
-    const users = JSON.parse(localStorage.getItem('borgo_users') || '[]');
-    const user = users.find((u: any) => u.email === email && u.password === password);
-
-    if (user) {
-      const { password: _, ...userWithoutPassword } = user;
-      localStorage.setItem('borgo_user', JSON.stringify(userWithoutPassword));
-      setState({
-        user: userWithoutPassword,
-        loading: false,
-        error: null
-      });
-      return { success: true };
-    } else {
+    if (error) {
       setState(prev => ({
         ...prev,
         loading: false,
-        error: 'Email o password non corretti'
+        error: "Email o password non corretti"
       }));
-      return { success: false, error: 'Email o password non corretti' };
+      return { success: false, error: error.message };
     }
+    
+    // Lo stato verrà aggiornato automaticamente dal listener onAuthStateChange
+    return { success: true };
   };
 
   const signUp = async (userData: {
     name: string;
     email: string;
     password: string;
-    user_type: 'customer' | 'business_owner';
+    // user_type è un dato del profilo, non di auth. Lo passiamo come metadato.
   }) => {
     setState(prev => ({ ...prev, loading: true, error: null }));
 
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    const { data: signUpData, error } = await supabase.auth.signUp({
+      email: userData.email,
+      password: userData.password,
+      options: {
+        // Questi dati vengono salvati in raw_user_meta_data in auth.users
+        // e il nostro trigger li userà per creare il profilo in public.global_users
+        data: {
+          name: userData.name,
+          // Puoi aggiungere altri campi qui, come il 'role' o 'user_type' iniziale
+        }
+      }
+    });
 
-    // Get existing users from storage manager
-    const users = storageManager.getUsers();
-    
-    // Check if email already exists
-    if (users.find(u => u.email === userData.email)) {
+    if (error) {
       setState(prev => ({
         ...prev,
         loading: false,
-        error: 'Email già registrata'
+        error: error.message
       }));
-      return { success: false, error: 'Email già registrata' };
+      return { success: false, error: error.message };
     }
-
-    // Create new user
-    const newUser = {
-      email: userData.email,
-      name: userData.name,
-      user_type: userData.user_type,
-      password: userData.password
-    };
-
-    // Save using storage manager
-    storageManager.addUser(newUser);
-
-    // Login the user
-    const savedUsers = storageManager.getUsers();
-    const savedUser = savedUsers.find(u => u.email === userData.email);
-    const { password: _, ...userWithoutPassword } = savedUser;
     
-    localStorage.setItem('borgo_user', JSON.stringify(userWithoutPassword));
-    
-    setState({
-      user: userWithoutPassword,
-      loading: false,
-      error: null
-    });
-
-    return { success: true };
-  };
-
-  const updateUserType = async (newUserType: 'customer' | 'business_owner') => {
-    if (!state.user) return { success: false, error: 'Utente non loggato' };
-
-    const updatedUser = { ...state.user, user_type: newUserType };
-    
-    // Update in localStorage
-    localStorage.setItem('borgo_user', JSON.stringify(updatedUser));
-    
-    // Update using storage manager
-    storageManager.updateUser(state.user.id, { user_type: newUserType });
-
-    setState(prev => ({
-      ...prev,
-      user: updatedUser
-    }));
-
-    return { success: true };
+    // Lo stato verrà aggiornato automaticamente dal listener onAuthStateChange
+    // dopo che l'utente conferma l'email (se l'opzione è attiva)
+    return { success: true, user: signUpData.user };
   };
 
   const signOut = async () => {
-    localStorage.removeItem('borgo_user');
-    setState({
-      user: null,
-      loading: false,
-      error: null
-    });
+    setState(prev => ({ ...prev, loading: true }));
+    await supabase.auth.signOut();
+    // Lo stato verrà aggiornato a null automaticamente dal listener
+  };
+
+  // Questa funzione ora aggiorna il profilo pubblico, non l'autenticazione
+  const updateUserProfile = async (updates: any) => {
+    if (!state.user) return { success: false, error: 'Utente non loggato' };
+
+    const { error } = await supabase
+      .from('global_users') // Aggiorniamo la tabella dei profili
+      .update(updates)
+      .eq('id', state.user.id);
+
+    if (error) {
+        console.error("Errore nell'aggiornamento del profilo:", error);
+        return { success: false, error: error.message };
+    }
+    return { success: true };
   };
 
   return {
@@ -173,6 +116,6 @@ export const useAuth = () => {
     signIn,
     signUp,
     signOut,
-    updateUserType,
+    updateUserProfile,
   };
 };
